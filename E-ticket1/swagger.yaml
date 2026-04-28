@@ -1,0 +1,764 @@
+openapi: 3.0.0
+info:
+  title: E-Ticketing System API
+  version: 1.0.0
+  description: Backend API for E-Ticketing System - A comprehensive bus ticket booking platform with QR code payment system
+  contact:
+    name: API Support
+    email: support@eticketing.com
+
+servers:
+  - url: http://localhost:3000
+    description: Development server
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter your JWT token
+
+  schemas:
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        name:
+          type: string
+          example: John Doe
+        email:
+          type: string
+          example: john@example.com
+        phone:
+          type: string
+          example: +1234567890
+        role:
+          type: string
+          enum: [Admin, Passenger, Driver, Supervisor]
+          example: Passenger
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    BusCompany:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        contactEmail:
+          type: string
+        contactPhone:
+          type: string
+
+    Route:
+      type: object
+      properties:
+        id:
+          type: integer
+        origin:
+          type: string
+        destination:
+          type: string
+        estimatedDuration:
+          type: integer
+          description: Duration in minutes
+
+    Bus:
+      type: object
+      properties:
+        id:
+          type: integer
+        plateNumber:
+          type: string
+        totalSeats:
+          type: integer
+        departureDate:
+          type: string
+          format: date
+        departureTime:
+          type: string
+
+    Booking:
+      type: object
+      properties:
+        id:
+          type: integer
+        passengerId:
+          type: integer
+        busId:
+          type: integer
+        seatNumber:
+          type: integer
+        status:
+          type: string
+          enum: [pending, confirmed, cancelled]
+
+    Payment:
+      type: object
+      properties:
+        id:
+          type: integer
+        bookingId:
+          type: integer
+        amount:
+          type: number
+        status:
+          type: string
+          enum: [pending, completed, failed, refund_pending]
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Authentication
+    description: User authentication and registration
+  - name: Users
+    description: User management (Admin only)
+  - name: Bus Companies
+    description: Bus company management (Admin only)
+  - name: Routes
+    description: Route management
+  - name: Buses
+    description: Bus and schedule management
+  - name: Bookings
+    description: Booking management
+  - name: Payments
+    description: Payment processing with QR codes
+  - name: Notifications
+    description: Notification management
+  - name: Travel History
+    description: Travel history (Driver/Supervisor only)
+
+paths:
+  # Authentication Endpoints
+  /auth/register:
+    post:
+      tags: [Authentication]
+      summary: Register a new user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password, role]
+              properties:
+                name:
+                  type: string
+                  example: John Doe
+                email:
+                  type: string
+                  example: john@example.com
+                password:
+                  type: string
+                  example: password123
+                phone:
+                  type: string
+                  example: +1234567890
+                role:
+                  type: string
+                  enum: [Admin, Passenger, Driver, Supervisor]
+                  example: Passenger
+                  description: "Role must be capitalized: Admin, Passenger, Driver, or Supervisor"
+      responses:
+        '201':
+          description: User registered successfully
+        '400':
+          description: Validation error
+        '409':
+          description: Email already exists
+
+  /auth/login:
+    post:
+      tags: [Authentication]
+      summary: Login user
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  example: john@example.com
+                password:
+                  type: string
+                  example: password123
+      responses:
+        '200':
+          description: Login successful
+        '401':
+          description: Invalid credentials
+
+  /auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get current user profile
+      responses:
+        '200':
+          description: User profile retrieved
+        '401':
+          description: Unauthorized
+
+  # User Management Endpoints
+  /admin/users:
+    get:
+      tags: [Users]
+      summary: Get all users
+      description: Admin only - List all users with pagination
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+      responses:
+        '200':
+          description: Users retrieved successfully
+        '401':
+          description: Unauthorized
+        '403':
+          description: Forbidden - Admin only
+
+  /admin/users/{id}:
+    get:
+      tags: [Users]
+      summary: Get user by ID
+      description: Admin only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User retrieved
+        '404':
+          description: User not found
+
+    put:
+      tags: [Users]
+      summary: Update user
+      description: Admin only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                email:
+                  type: string
+                role:
+                  type: string
+      responses:
+        '200':
+          description: User updated
+        '404':
+          description: User not found
+
+    delete:
+      tags: [Users]
+      summary: Delete user
+      description: Admin only - Soft delete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: User deleted
+        '404':
+          description: User not found
+
+  # Bus Company Endpoints
+  /admin/companies:
+    get:
+      tags: [Bus Companies]
+      summary: Get all bus companies
+      description: Admin only
+      responses:
+        '200':
+          description: Companies retrieved
+
+    post:
+      tags: [Bus Companies]
+      summary: Create bus company
+      description: Admin only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, contactEmail, contactPhone]
+              properties:
+                name:
+                  type: string
+                  example: Express Bus Lines
+                contactEmail:
+                  type: string
+                  example: contact@expressbus.com
+                contactPhone:
+                  type: string
+                  example: +1234567890
+      responses:
+        '201':
+          description: Company created
+        '409':
+          description: Company already exists
+
+  /admin/companies/{id}:
+    put:
+      tags: [Bus Companies]
+      summary: Update bus company
+      description: Admin only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                contactEmail:
+                  type: string
+                contactPhone:
+                  type: string
+      responses:
+        '200':
+          description: Company updated
+
+    delete:
+      tags: [Bus Companies]
+      summary: Delete bus company
+      description: Admin only - Soft delete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Company deleted
+
+  # Route Endpoints
+  /routes:
+    get:
+      tags: [Routes]
+      summary: Get all routes
+      description: All authenticated users
+      responses:
+        '200':
+          description: Routes retrieved
+
+  /admin/routes:
+    post:
+      tags: [Routes]
+      summary: Create route
+      description: Admin only
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [origin, destination, estimatedDuration]
+              properties:
+                origin:
+                  type: string
+                  example: New York
+                destination:
+                  type: string
+                  example: Boston
+                estimatedDuration:
+                  type: integer
+                  example: 240
+                  description: Duration in minutes
+      responses:
+        '201':
+          description: Route created
+
+  /admin/routes/{id}:
+    delete:
+      tags: [Routes]
+      summary: Delete route
+      description: Admin only - Soft delete
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Route deleted
+
+  # Bus Endpoints
+  /buses/search:
+    get:
+      tags: [Buses]
+      summary: Search buses
+      description: Search buses by origin, destination, and date
+      parameters:
+        - name: origin
+          in: query
+          required: true
+          schema:
+            type: string
+            example: New York
+        - name: destination
+          in: query
+          required: true
+          schema:
+            type: string
+            example: Boston
+        - name: date
+          in: query
+          required: true
+          schema:
+            type: string
+            format: date
+            example: 2024-12-25
+      responses:
+        '200':
+          description: Buses found
+
+  /buses/{id}/seats:
+    get:
+      tags: [Buses]
+      summary: Get seat availability
+      description: Get all seats for a bus with availability status
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Seats retrieved
+
+  /admin/buses:
+    get:
+      tags: [Buses]
+      summary: Get all buses
+      description: Admin only - with pagination
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Buses retrieved
+
+    post:
+      tags: [Buses]
+      summary: Create bus
+      description: Admin only - Auto-generates seats
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plateNumber, totalSeats, companyId, routeId, departureDate, departureTime]
+              properties:
+                plateNumber:
+                  type: string
+                  example: ABC-1234
+                totalSeats:
+                  type: integer
+                  example: 40
+                companyId:
+                  type: integer
+                  example: 1
+                routeId:
+                  type: integer
+                  example: 1
+                departureDate:
+                  type: string
+                  format: date
+                  example: 2024-12-25
+                departureTime:
+                  type: string
+                  example: 14:30:00
+      responses:
+        '201':
+          description: Bus created
+
+  /admin/buses/{id}:
+    put:
+      tags: [Buses]
+      summary: Update bus
+      description: Admin only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                routeId:
+                  type: integer
+                departureDate:
+                  type: string
+                departureTime:
+                  type: string
+                totalSeats:
+                  type: integer
+      responses:
+        '200':
+          description: Bus updated
+
+    delete:
+      tags: [Buses]
+      summary: Delete bus
+      description: Admin only - Cancels all pending bookings
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bus deleted
+
+  # Booking Endpoints
+  /bookings:
+    get:
+      tags: [Bookings]
+      summary: Get my bookings
+      description: Get all bookings for authenticated user
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Bookings retrieved
+
+    post:
+      tags: [Bookings]
+      summary: Create booking
+      description: Create a new booking
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [busId, seatNumber]
+              properties:
+                busId:
+                  type: integer
+                  example: 1
+                seatNumber:
+                  type: integer
+                  example: 15
+      responses:
+        '201':
+          description: Booking created
+        '409':
+          description: Seat already reserved
+
+  /bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Get booking by ID
+      description: Owner, Admin, or Supervisor only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Booking retrieved
+
+    delete:
+      tags: [Bookings]
+      summary: Cancel booking
+      description: Owner only - Handles refunds
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Booking cancelled
+
+  # Payment Endpoints
+  /payments/initiate:
+    post:
+      tags: [Payments]
+      summary: Initiate payment
+      description: Generate QR code for payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [bookingId]
+              properties:
+                bookingId:
+                  type: integer
+                  example: 1
+      responses:
+        '201':
+          description: Payment initiated with QR code
+        '409':
+          description: Payment already exists
+
+  /payments/verify:
+    post:
+      tags: [Payments]
+      summary: Verify payment
+      description: Verify QR code and complete payment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [paymentId, qrCodeToken]
+              properties:
+                paymentId:
+                  type: integer
+                  example: 1
+                qrCodeToken:
+                  type: string
+                  example: abc123def456
+      responses:
+        '200':
+          description: Payment verified
+        '400':
+          description: Invalid QR code
+
+  /payments/{id}:
+    get:
+      tags: [Payments]
+      summary: Get payment by ID
+      description: Owner or Admin only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Payment retrieved
+
+  # Notification Endpoints
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: Get my notifications
+      description: Get all notifications for authenticated user
+      responses:
+        '200':
+          description: Notifications retrieved
+
+  /notifications/{id}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark notification as read
+      description: Owner only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Notification marked as read
+
+  # Travel History Endpoints
+  /travel-history:
+    get:
+      tags: [Travel History]
+      summary: Get travel history
+      description: Driver and Supervisor only
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Travel history retrieved
+
+  /travel-history/{id}:
+    get:
+      tags: [Travel History]
+      summary: Get travel history by ID
+      description: Driver and Supervisor only
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        '200':
+          description: Travel history retrieved

@@ -5,7 +5,7 @@ const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser]       = useState(null);
-  const [loading, setLoading] = useState(true); // true while checking saved token
+  const [loading, setLoading] = useState(true);
 
   // On app load: restore user from localStorage
   useEffect(() => {
@@ -26,8 +26,9 @@ export function AuthProvider({ children }) {
     return user;
   };
 
-  const register = async (name, email, password, role = 'Passenger') => {
-    const response = await authAPI.register({ name, email, password, role });
+  // Fixed: removed 'role' param — backend always assigns 'Passenger' on registration
+  const register = async (name, email, password) => {
+    const response = await authAPI.register({ name, email, password });
     return response.data;
   };
 
@@ -53,7 +54,6 @@ export function AuthProvider({ children }) {
   );
 }
 
-// Custom hook — use this in any component: const { user, login, logout } = useAuth();
 export function useAuth() {
   const ctx = useContext(AuthContext);
   if (!ctx) throw new Error('useAuth must be used inside <AuthProvider>');

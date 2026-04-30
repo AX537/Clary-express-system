@@ -1,12 +1,10 @@
-// FrontEnd/eticketing-ui/src/pages/Booking.js
-
 import React, { useState, useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Bus, User, Phone, Mail, CreditCard, Smartphone, Wallet, ArrowRight, Shield, Clock, Users, MapPin } from 'lucide-react';
+import { Bus, User, Phone, Mail, CreditCard, Smartphone, Wallet, ArrowRight, Shield, Clock, Users } from 'lucide-react';
 import SeatSelector from "../components/SeatSelector";
 import ModernCard from "../components/ModernCard";
-import { busAPI, routeAPI, bookingAPI } from '../services/api';
+import { bookingAPI } from '../services/api';
 
 function Booking() {
   const [seats, setSeats] = useState([]);
@@ -16,148 +14,106 @@ function Booking() {
   const [paymentMethod, setPaymentMethod] = useState("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [selectedBus, setSelectedBus] = useState(null);
-  const [availableBuses, setAvailableBuses] = useState([]);
-  const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Fetch available buses
-  useEffect(() => {
-    const fetchBuses = async () => {
-      try {
-        // Fetch all buses without filters for the booking page
-        const response = await busAPI.searchBuses('', '', '');
-        setAvailableBuses(response.data?.buses || response.data?.data || []);
-      } catch (error) {
-        console.error('Error fetching buses:', error);
-        setAvailableBuses([]);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchBuses();
-  }, []);
-
-  // Get bus data from location state or set default
+  // Get bus data from navigation state (passed from BusCard)
   useEffect(() => {
     if (location.state?.selectedBus) {
       setSelectedBus(location.state.selectedBus);
-    } else if (availableBuses.length > 0) {
-      setSelectedBus(availableBuses[0]);
     }
-  }, [location.state, availableBuses]);
+  }, [location.state]);
 
-  const totalAmount = selectedBus ? seats.length * selectedBus.price : seats.length * 3500;
+  // Get price from route data — Fixed: was hardcoded 3500
+  const pricePerSeat = Number(
+    selectedBus?.route?.price ||
+    selectedBus?.Route?.price ||
+    location.state?.price ||
+    5000
+  );
+
+  // Fixed: total now correctly uses pricePerSeat
+  const totalAmount = seats.length * pricePerSeat;
+
+  // Get route info
+  const routeFrom = selectedBus?.route?.origin || selectedBus?.Route?.origin || location.state?.from || 'N/A';
+  const routeTo   = selectedBus?.route?.destination || selectedBus?.Route?.destination || location.state?.to || 'N/A';
+  const busName   = selectedBus?.company?.name || selectedBus?.plateNumber || selectedBus?.plate_number || 'N/A';
 
   const handleBooking = async () => {
-    // Validate required fields
     if (!name || !phone || seats.length === 0 || !paymentMethod || !selectedBus) {
-      alert("Please fill all fields, select seats, and choose a bus");
+      alert("Please fill all fields, select seats, and choose a payment method");
       return;
     }
 
-    // Validate phone number format
     const phoneRegex = /^(\+250|0)?[7-9]\d{8}$/;
     if (!phoneRegex.test(phone)) {
-      alert("Please enter a valid Rwandan phone number");
+      alert("Please enter a valid Rwandan phone number (e.g. 0788123456)");
       return;
     }
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (email && !emailRegex.test(email)) {
-      alert("Please enter a valid email address");
+    if (email) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email)) {
+        alert("Please enter a valid email address");
+        return;
+      }
+    }
+
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!user.id) {
+      alert("Please log in to make a booking");
+      navigate("/login");
+      return;
+    }
+
+    if (!selectedBus.id) {
+      alert("Invalid bus selected. Please go back and select a bus.");
       return;
     }
 
     setIsProcessing(true);
 
     try {
-      // Get current user ID from localStorage
-      const user = JSON.parse(localStorage.getItem('user') || '{}');
-      
-      // Check if user is logged in
-      if (!user.id) {
-        alert("Please log in to make a booking");
-        navigate("/login");
-        return;
-      }
-
-      // Validate bus data
-      if (!selectedBus.id) {
-        alert("Invalid bus selected. Please select a bus again.");
-        return;
-      }
-
-      console.log('Creating booking with data:', {
-        passenger_id: user.id,
-        bus_id: selectedBus.id,
-        seats: seats,
-        user: user
-      });
-
       // Create booking for each selected seat
-      const bookingPromises = seats.map(seatNumber => {
-        console.log('Creating booking for seat:', seatNumber);
-        return bookingAPI.createBooking({
-          busId: selectedBus.id,
-          seatNumber: seatNumber
-        });
-      });
+      const bookingPromises = seats.map(seatNumber =>
+        bookingAPI.createBooking({ busId: selectedBus.id, seatNumber })
+      );
 
       const bookingResults = await Promise.allSettled(bookingPromises);
-      
-      // Check if any bookings failed
-      const failedBookings = bookingResults.filter(result => result.status === 'rejected');
+
+      const failedBookings = bookingResults.filter(r => r.status === 'rejected');
       if (failedBookings.length > 0) {
-        console.error('Some bookings failed:', failedBookings);
-        alert(`Failed to book ${failedBookings.length} seat(s). Please try again.`);
+        const errorMsg = failedBookings[0].reason?.response?.data?.message || 'Some seats could not be booked';
+        alert(`Booking failed: ${errorMsg}`);
         return;
       }
 
-      // Extract successful booking data
       const successfulBookings = bookingResults
-        .filter(result => result.status === 'fulfilled')
-        .map(result => {
-          // Handle different API response structures
-          const bookingData = result.value.data;
-          return bookingData.data || bookingData || result.value;
-        });
+        .filter(r => r.status === 'fulfilled')
+        .map(r => r.value.data?.data?.booking || r.value.data?.data || r.value.data);
 
-      console.log('Successful bookings:', successfulBookings);
-
-      // Navigate to payment page with booking details
-      const origin = selectedBus.Route?.origin || 'Unknown';
-      const destination = selectedBus.Route?.destination || 'Unknown';
-      const price = selectedBus.Route?.price || 3500;
-      const bookingData = {
-        name,
-        phone,
-        email,
-        seats,
-        bus: selectedBus,
-        route: `${origin} to ${destination}`,
-        totalAmount: seats.length * parseFloat(price),
-        paymentMethod,
-        bookings: successfulBookings
-      };
-
-      console.log('Navigating to payment with data:', bookingData);
-      navigate("/payment", { state: bookingData });
+      navigate("/payment", {
+        state: {
+          name,
+          phone,
+          email,
+          seats,
+          bus: selectedBus,
+          route: `${routeFrom} to ${routeTo}`,
+          pricePerSeat,
+          totalAmount,
+          paymentMethod,
+          bookings: successfulBookings
+        }
+      });
     } catch (error) {
       console.error('Booking error:', error);
-      
-      // Handle different types of errors
-      if (error.code === 'NETWORK_ERROR') {
-        alert("Network error. Please check your internet connection and try again.");
-      } else if (error.response?.status === 401) {
+      if (error.response?.status === 401) {
         alert("Session expired. Please log in again.");
         navigate("/login");
       } else if (error.response?.status === 409) {
         alert("One or more seats are already booked. Please select different seats.");
-      } else if (error.response?.status === 400) {
-        alert(error.response.data?.message || "Invalid booking data. Please check your information.");
       } else {
         alert(error.response?.data?.message || "Booking failed. Please try again.");
       }
@@ -166,118 +122,88 @@ function Booking() {
     }
   };
 
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-blue-50 to-purple-100 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900 py-6 px-4 relative overflow-hidden">
-      {/* Background decorative elements */}
-      <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute -top-40 -right-40 w-80 h-80 bg-gradient-to-br from-blue-400/20 to-purple-400/20 rounded-full blur-3xl"></div>
-        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-gradient-to-tr from-indigo-400/20 to-blue-400/20 rounded-full blur-3xl"></div>
-        <div className="absolute top-1/3 left-1/4 transform -translate-x-1/2 -translate-y-1/2 w-96 h-96 bg-gradient-to-r from-purple-300/10 to-blue-300/10 rounded-full blur-3xl"></div>
+  if (!selectedBus) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-indigo-100 to-purple-100">
+        <div className="text-center">
+          <Bus className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-700 mb-2">No bus selected</h2>
+          <p className="text-gray-500 mb-4">Please search for a bus first</p>
+          <button onClick={() => navigate('/')}
+            className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+            Go to Home
+          </button>
+        </div>
       </div>
-      
-      <div className="max-w-7xl mx-auto relative z-10">
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-indigo-100 via-blue-50 to-purple-100 py-6 px-4">
+      <div className="max-w-7xl mx-auto">
+
         {/* Header */}
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="text-center mb-6"
-        >
-          <div className="flex items-center justify-center mb-2">
-            <div className="w-12 h-12 bg-white dark:bg-gray-800 rounded-lg flex items-center justify-center mr-3 shadow-lg">
-              <img 
-                src="/logo.png" 
-                alt="Clary Express Logo" 
-                className="w-10 h-10 object-contain"
-              />
-            </div>
-            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
-              Complete Your Booking
-            </h1>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400">
-            Secure your seats for a comfortable journey
-          </p>
+        <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-6">
+          <h1 className="text-3xl font-bold text-gray-900 mb-1">Complete Your Booking</h1>
+          <p className="text-gray-600">Secure your seats for a comfortable journey</p>
         </motion.div>
 
         <div className="grid lg:grid-cols-3 gap-6">
-          {/* Left Column - Seat Selection */}
-          <motion.div
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.1 }}
-            className="lg:col-span-2"
-          >
-            <ModernCard variant="elevated" className="mb-4">
+
+          {/* Left - Seat Selection + Passenger Info + Payment */}
+          <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} className="lg:col-span-2 space-y-4">
+
+            {/* Seat Selector */}
+            <ModernCard variant="elevated">
               <div className="flex items-center mb-3">
                 <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-lg flex items-center justify-center mr-3">
                   <Users className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Select Your Seats</h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Choose your preferred seats</p>
+                  <h2 className="text-xl font-bold text-gray-900">Select Your Seats</h2>
+                  <p className="text-sm text-gray-500">Choose your preferred seats</p>
                 </div>
               </div>
               <SeatSelector selectedSeats={seats} setSelectedSeats={setSeats} selectedBus={selectedBus} />
             </ModernCard>
 
-            {/* Passenger Information */}
-            <ModernCard variant="elevated" className="mb-4">
-              <div className="flex items-center mb-3">
+            {/* Passenger Info */}
+            <ModernCard variant="elevated">
+              <div className="flex items-center mb-4">
                 <div className="w-10 h-10 bg-gradient-to-r from-green-500 to-teal-600 rounded-lg flex items-center justify-center mr-3">
                   <User className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-bold text-gray-900 dark:text-white">Passenger Information</h2>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">Enter your details</p>
+                  <h2 className="text-xl font-bold text-gray-900">Passenger Information</h2>
+                  <p className="text-sm text-gray-500">Enter your details</p>
                 </div>
               </div>
-
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="grid md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Full Name *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Full Name *</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
-                    <input
-                      type="text"
-                      placeholder="Enter your full name"
-                      value={name}
+                    <User className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                    <input type="text" placeholder="Enter your full name" value={name}
                       onChange={(e) => setName(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    />
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
-
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Phone Number *
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number *</label>
                   <div className="relative">
-                    <Phone className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
-                    <input
-                      type="tel"
-                      placeholder="0788XXXXXX"
-                      value={phone}
+                    <Phone className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                    <input type="tel" placeholder="0788XXXXXX" value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    />
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
-
                 <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    Email Address
-                  </label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
                   <div className="relative">
-                    <Mail className="absolute left-3 top-3.5 w-5 h-5 text-gray-400" />
-                    <input
-                      type="email"
-                      placeholder="your@email.com"
-                      value={email}
+                    <Mail className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                    <input type="email" placeholder="your@email.com" value={email}
                       onChange={(e) => setEmail(e.target.value)}
-                      className="w-full pl-10 pr-4 py-3 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent dark:bg-gray-700 dark:text-white"
-                    />
+                      className="w-full pl-9 pr-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500" />
                   </div>
                 </div>
               </div>
@@ -285,111 +211,66 @@ function Booking() {
 
             {/* Payment Method */}
             <ModernCard variant="elevated">
-              <div className="flex items-center mb-6">
-                <div className="w-12 h-12 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center mr-4">
-                  <CreditCard className="w-6 h-6 text-white" />
+              <div className="flex items-center mb-4">
+                <div className="w-10 h-10 bg-gradient-to-r from-purple-500 to-pink-600 rounded-lg flex items-center justify-center mr-3">
+                  <CreditCard className="w-5 h-5 text-white" />
                 </div>
                 <div>
-                  <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Payment Method</h2>
-                  <p className="text-gray-600 dark:text-gray-400">Choose how to pay</p>
+                  <h2 className="text-xl font-bold text-gray-900">Payment Method</h2>
+                  <p className="text-sm text-gray-500">Choose how to pay</p>
                 </div>
               </div>
-
-              <div className="space-y-4">
-                <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="mobile_money"
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <Smartphone className="w-8 h-8 text-green-600 ml-4 mr-3" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900 dark:text-white">Mobile Money</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">MTN MoMo / Airtel Money</p>
-                  </div>
-                </label>
-
-                <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="card"
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <CreditCard className="w-8 h-8 text-blue-600 ml-4 mr-3" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900 dark:text-white">Credit/Debit Card</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Visa, Mastercard</p>
-                  </div>
-                </label>
-
-                <label className="flex items-center p-4 border-2 border-gray-200 dark:border-gray-600 rounded-lg cursor-pointer hover:border-blue-500 transition-colors">
-                  <input
-                    type="radio"
-                    name="payment"
-                    value="cash"
-                    onChange={(e) => setPaymentMethod(e.target.value)}
-                    className="w-4 h-4 text-blue-600"
-                  />
-                  <Wallet className="w-8 h-8 text-purple-600 ml-4 mr-3" />
-                  <div className="flex-1">
-                    <p className="font-semibold text-gray-900 dark:text-white">Cash at Terminal</p>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">Pay at the bus station</p>
-                  </div>
-                </label>
+              <div className="space-y-3">
+                {[
+                  { value: 'mobile_money', label: 'Mobile Money', sub: 'MTN MoMo / Airtel Money', icon: Smartphone, color: 'text-green-600' },
+                  { value: 'card',         label: 'Credit/Debit Card', sub: 'Visa, Mastercard',   icon: CreditCard, color: 'text-blue-600'  },
+                  { value: 'cash',         label: 'Cash at Terminal',  sub: 'Pay at the bus station', icon: Wallet, color: 'text-purple-600' },
+                ].map(opt => (
+                  <label key={opt.value} className={`flex items-center p-4 border-2 rounded-lg cursor-pointer transition-colors ${paymentMethod === opt.value ? 'border-blue-500 bg-blue-50' : 'border-gray-200 hover:border-blue-300'}`}>
+                    <input type="radio" name="payment" value={opt.value} onChange={(e) => setPaymentMethod(e.target.value)} className="w-4 h-4 text-blue-600" />
+                    <opt.icon className={`w-7 h-7 ${opt.color} ml-4 mr-3`} />
+                    <div>
+                      <p className="font-semibold text-gray-900">{opt.label}</p>
+                      <p className="text-sm text-gray-500">{opt.sub}</p>
+                    </div>
+                  </label>
+                ))}
               </div>
             </ModernCard>
           </motion.div>
 
-          {/* Right Column - Booking Summary */}
-          <motion.div
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2 }}
-          >
+          {/* Right - Booking Summary */}
+          <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
             <ModernCard variant="gradient" className="sticky top-8">
-              <div className="flex items-center mb-6">
-                <Shield className="w-8 h-8 text-blue-600 mr-3" />
-                <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Booking Summary</h2>
+              <div className="flex items-center mb-5">
+                <Shield className="w-7 h-7 text-blue-600 mr-3" />
+                <h2 className="text-xl font-bold text-gray-900">Booking Summary</h2>
               </div>
 
-              <div className="space-y-4 mb-6">
-                <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-600">
-                  <span className="text-gray-600 dark:text-gray-400">Route</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">Kigali to Musanze</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-600">
-                  <span className="text-gray-600 dark:text-gray-400">Bus</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">Clary Express</span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-600">
-                  <span className="text-gray-600 dark:text-gray-400">Selected Seats</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">
-                    {seats.length > 0 ? seats.join(", ") : "None"}
-                  </span>
-                </div>
-                <div className="flex justify-between items-center py-3 border-b border-gray-200 dark:border-gray-600">
-                  <span className="text-gray-600 dark:text-gray-400">Price per seat</span>
-                  <span className="font-semibold text-gray-900 dark:text-white">3,500 RWF</span>
-                </div>
-                <div className="flex justify-between items-center py-3">
-                  <span className="text-lg font-semibold text-gray-900 dark:text-white">Total Amount</span>
-                  <span className="text-2xl font-bold text-blue-600 dark:text-blue-400">
-                    {totalAmount.toLocaleString()} RWF
-                  </span>
+              <div className="space-y-3 mb-5">
+                {[
+                  { label: 'Route',          value: `${routeFrom} to ${routeTo}` },
+                  { label: 'Bus',            value: busName },
+                  { label: 'Selected Seats', value: seats.length > 0 ? seats.join(', ') : 'None' },
+                  { label: 'Price per seat', value: `${pricePerSeat.toLocaleString()} RWF` },
+                ].map(item => (
+                  <div key={item.label} className="flex justify-between items-center py-2 border-b border-gray-200">
+                    <span className="text-gray-600 text-sm">{item.label}</span>
+                    <span className="font-semibold text-gray-900 text-sm">{item.value}</span>
+                  </div>
+                ))}
+                <div className="flex justify-between items-center py-2">
+                  <span className="font-bold text-gray-900">Total Amount</span>
+                  <span className="text-2xl font-bold text-blue-600">{totalAmount.toLocaleString()} RWF</span>
                 </div>
               </div>
 
               <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
+                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
                 onClick={handleBooking}
                 disabled={isProcessing || seats.length === 0 || !paymentMethod}
-                className={`w-full py-4 rounded-lg font-semibold text-white flex items-center justify-center space-x-2 transition-all ${
-                  (isProcessing || seats.length === 0 || !paymentMethod)
+                className={`w-full py-3.5 rounded-lg font-semibold text-white flex items-center justify-center space-x-2 transition-all ${
+                  isProcessing || seats.length === 0 || !paymentMethod
                     ? 'bg-gray-400 cursor-not-allowed'
                     : 'bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700'
                 }`}
@@ -398,15 +279,10 @@ function Booking() {
                 {!isProcessing && <ArrowRight className="w-5 h-5" />}
               </motion.button>
 
-              <div className="mt-6 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                <div className="flex items-start space-x-3">
-                  <Clock className="w-5 h-5 text-blue-600 dark:text-blue-400 mt-0.5" />
-                  <div>
-                    <p className="text-sm font-semibold text-blue-900 dark:text-blue-100">Booking Confirmation</p>
-                    <p className="text-xs text-blue-700 dark:text-blue-300 mt-1">
-                      You'll receive a confirmation email with your ticket details after payment.
-                    </p>
-                  </div>
+              <div className="mt-4 p-3 bg-blue-50 rounded-lg">
+                <div className="flex items-start space-x-2">
+                  <Clock className="w-4 h-4 text-blue-600 mt-0.5" />
+                  <p className="text-xs text-blue-700">You'll receive a confirmation email with your ticket details after payment.</p>
                 </div>
               </div>
             </ModernCard>

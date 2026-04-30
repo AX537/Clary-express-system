@@ -5,6 +5,21 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { sequelize, testConnection } from '../config/database.js';
 
+// Route imports
+import authRoutes from './routes/authRoutes.js';
+import userRoutes from './routes/userRoutes.js';
+import companyRoutes from './routes/companyRoutes.js';
+import routeRoutes from './routes/routeRoutes.js';
+import busRoutes from './routes/busRoutes.js';
+import bookingRoutes from './routes/bookingRoutes.js';
+import paymentRoutes from './routes/paymentRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
+import travelHistoryRoutes from './routes/travelHistoryRoutes.js';
+import swaggerRoutes from './routes/swaggerRoutes.js';
+
+// Middleware imports
+import { errorHandler, notFoundHandler } from './middleware/errorMiddleware.js';
+
 // Load environment variables
 dotenv.config();
 
@@ -41,18 +56,6 @@ app.get('/health', (req, res) => {
   });
 });
 
-// API Routes
-import authRoutes from './routes/authRoutes.js';
-import userRoutes from './routes/userRoutes.js';
-import companyRoutes from './routes/companyRoutes.js';
-import routeRoutes from './routes/routeRoutes.js';
-import busRoutes from './routes/busRoutes.js';
-import bookingRoutes from './routes/bookingRoutes.js';
-import paymentRoutes from './routes/paymentRoutes.js';
-import notificationRoutes from './routes/notificationRoutes.js';
-import travelHistoryRoutes from './routes/travelHistoryRoutes.js';
-import swaggerRoutes from './routes/swaggerRoutes.js';
-
 // Register routes
 app.use('/auth', authRoutes);
 app.use('/admin/users', userRoutes);
@@ -67,8 +70,6 @@ app.use('/notifications', notificationRoutes);
 app.use('/travel-history', travelHistoryRoutes);
 app.use('/api-docs', swaggerRoutes);
 
-import { errorHandler, notFoundHandler } from './middleware/errorMiddleware.js';
-
 // 404 Handler - Must be after all valid routes
 app.use(notFoundHandler);
 
@@ -80,7 +81,7 @@ const startServer = async () => {
   try {
     // Test database connection
     const dbConnected = await testConnection();
-    
+
     if (!dbConnected) {
       console.error('Failed to connect to database. Exiting...');
       process.exit(1);
@@ -89,15 +90,15 @@ const startServer = async () => {
     // Sync database models (in development only)
     if (process.env.NODE_ENV === 'development') {
       await sequelize.sync({ alter: false });
-      console.log('✓ Database models synchronized');
+      console.log('[OK] Database models synchronized');
     }
 
     // Start listening
     const PORT = process.env.PORT || 3000;
     app.listen(PORT, () => {
-      console.log(`✓ Server is running on port ${PORT}`);
-      console.log(`✓ Environment: ${process.env.NODE_ENV || 'development'}`);
-      console.log(`✓ Health check: http://localhost:${PORT}/health`);
+      console.log(`[OK] Server is running on port ${PORT}`);
+      console.log(`[OK] Environment: ${process.env.NODE_ENV || 'development'}`);
+      console.log(`[OK] Health check: http://localhost:${PORT}/health`);
     });
   } catch (error) {
     console.error('Failed to start server:', error.message);
@@ -105,10 +106,8 @@ const startServer = async () => {
   }
 };
 
-// Start server if this file is run directly
-if (process.argv[1] === __filename) {
-  startServer();
-}
+// Always start the server when this file is run directly
+startServer();
 
 // Export app for testing
 export default app;

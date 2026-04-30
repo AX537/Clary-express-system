@@ -87,14 +87,13 @@ function AdminDashboard() {
       if (modalType === 'company') {
         await companyAPI.createCompany(formData);
       } else if (modalType === 'route') {
-        await routeAPI.createRoute({ ...formData, estimatedDuration: parseInt(formData.estimatedDuration), price: parseFloat(formData.price) });
+        await routeAPI.createRoute({ ...formData, estimatedDuration: parseInt(formData.estimatedDuration) });
       } else if (modalType === 'bus') {
         await busAPI.createBus({
           ...formData,
           totalSeats: parseInt(formData.totalSeats),
           companyId: parseInt(formData.companyId),
-          routeId: parseInt(formData.routeId),
-          departureTime: formData.departureTime ? formData.departureTime + ':00' : ''
+          routeId: parseInt(formData.routeId)
         });
       }
       closeModal();
@@ -427,11 +426,8 @@ function AdminDashboard() {
                       <MapPin className="w-5 h-5 text-blue-600 mr-2" />
                       <h4 className="font-semibold text-gray-900">{route.origin} to {route.destination}</h4>
                     </div>
-                    <p className="text-sm text-gray-600 mb-1">
+                    <p className="text-sm text-gray-600 mb-3">
                       Duration: {Math.floor((route.estimatedDuration || route.estimated_duration) / 60)}h {(route.estimatedDuration || route.estimated_duration) % 60}m
-                    </p>
-                    <p className="text-sm font-semibold text-blue-600 mb-3">
-                      Price: {Number(route.price || 0).toLocaleString()} RWF
                     </p>
                     <button onClick={() => handleDelete('route', route.id)} className="w-full p-2 text-red-600 hover:bg-red-50 rounded">
                       <Trash2 className="w-4 h-4 mx-auto" />
@@ -476,8 +472,6 @@ function AdminDashboard() {
                 <input name="destination" placeholder="Destination (e.g. Musanze)" required onChange={handleFormChange}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500" />
                 <input name="estimatedDuration" type="number" placeholder="Duration in minutes (e.g. 120)" required onChange={handleFormChange}
-                  className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500" />
-                <input name="price" type="number" placeholder="Ticket price in RWF (e.g. 5000)" required onChange={handleFormChange}
                   className="w-full border border-gray-300 rounded-lg px-4 py-2 focus:ring-2 focus:ring-purple-500" />
               </>}
 

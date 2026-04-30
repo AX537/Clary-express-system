@@ -1,17 +1,17 @@
 import express from 'express';
-import { 
-  createBus, 
-  getAllBuses, 
-  updateBus, 
-  deleteBus, 
-  searchBuses, 
-  getBusSeats 
+import {
+  createBus,
+  getAllBuses,
+  updateBus,
+  deleteBus,
+  searchBuses,
+  getBusSeats
 } from '../controllers/busController.js';
-import { 
-  createBusValidation, 
-  updateBusValidation, 
-  busIdValidation, 
-  busSearchValidation 
+import {
+  createBusValidation,
+  updateBusValidation,
+  busIdValidation,
+  busSearchValidation
 } from '../validators/busValidators.js';
 import { handleValidationErrors } from '../middleware/validationMiddleware.js';
 import { authenticate } from '../middleware/authMiddleware.js';
@@ -22,16 +22,16 @@ const router = express.Router();
 /**
  * @route   GET /buses/search
  * @desc    Search buses by origin, destination, and date
- * @access  All authenticated users
+ * @access  Public - Fixed: removed authenticate so guests can search buses
  */
-router.get('/search', authenticate, busSearchValidation, handleValidationErrors, searchBuses);
+router.get('/search', busSearchValidation, handleValidationErrors, searchBuses);
 
 /**
  * @route   GET /buses/:id/seats
  * @desc    Get seat availability for a specific bus
- * @access  All authenticated users
+ * @access  Public - guests can view seats before logging in
  */
-router.get('/:id/seats', authenticate, busIdValidation, handleValidationErrors, getBusSeats);
+router.get('/:id/seats', busIdValidation, handleValidationErrors, getBusSeats);
 
 /**
  * @route   POST /admin/buses

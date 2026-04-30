@@ -1,6 +1,7 @@
 import { Bus, Seat, BusCompany, Route, Booking } from '../models/index.js';
 import { asyncHandler, createError } from '../middleware/errorMiddleware.js';
 import { Op } from 'sequelize';
+import sequelize from '../../config/database.js';
 
 /**
  * Create a new bus with seats
@@ -8,55 +9,28 @@ import { Op } from 'sequelize';
  */
 export const createBus = asyncHandler(async (req, res) => {
   const { plateNumber, totalSeats, companyId, routeId, departureDate, departureTime } = req.body;
-  
-  // Check if bus with same plate number already exists
+
   const existingBus = await Bus.findOne({ where: { plateNumber } });
-  
-  if (existingBus) {
-    throw createError.conflict('Bus with this plate number already exists');
-  }
-  
-  // Verify company exists
+  if (existingBus) throw createError.conflict('Bus with this plate number already exists');
+
   const company = await BusCompany.findByPk(companyId);
-  if (!company) {
-    throw createError.notFound('Bus company not found');
-  }
-  
-  // Verify route exists
+  if (!company) throw createError.notFound('Bus company not found');
+
   const route = await Route.findByPk(routeId);
-  if (!route) {
-    throw createError.notFound('Route not found');
-  }
-  
-  // Create bus
-  const bus = await Bus.create({
-    plateNumber,
-    totalSeats,
-    companyId,
-    routeId,
-    departureDate,
-    departureTime
-  });
-  
-  // Auto-generate seats for the bus
+  if (!route) throw createError.notFound('Route not found');
+
+  const bus = await Bus.create({ plateNumber, totalSeats, companyId, routeId, departureDate, departureTime });
+
   const seats = [];
   for (let i = 1; i <= totalSeats; i++) {
-    seats.push({
-      busId: bus.id,
-      seatNumber: i,
-      status: 'available'
-    });
+    seats.push({ busId: bus.id, seatNumber: i, status: 'available' });
   }
-  
   await Seat.bulkCreate(seats);
-  
+
   res.status(201).json({
     status: 201,
     message: 'Bus created successfully with seats',
-    data: { 
-      bus,
-      seatsCreated: totalSeats
-    }
+    data: { bus, seatsCreated: totalSeats }
   });
 });
 
@@ -65,56 +39,34 @@ export const createBus = asyncHandler(async (req, res) => {
  * GET /admin/buses
  */
 export const getAllBuses = asyncHandler(async (req, res) => {
-  const page = parseInt(req.query.page) || 1;
+  const page  = parseInt(req.query.page)  || 1;
   const limit = parseInt(req.query.limit) || 10;
   const offset = (page - 1) * limit;
-  
+
   const { count, rows: buses } = await Bus.findAndCountAll({
     include: [
-      {
-        model: BusCompany,
-        as: 'company',
-        attributes: ['id', 'name']
-      },
-      {
-        model: Route,
-        as: 'route',
-        attributes: ['id', 'origin', 'destination', 'estimatedDuration']
-      },
-      {
-        model: Seat,
-        as: 'seats',
-        attributes: ['status'],
-        required: false
-      }
+      { model: BusCompany, as: 'company', attributes: ['id', 'name'] },
+      { model: Route,      as: 'route',   attributes: ['id', 'origin', 'destination', 'estimatedDuration'] },
+      { model: Seat,       as: 'seats',   attributes: ['status'], required: false }
     ],
     limit,
     offset,
     order: [['departureDate', 'ASC'], ['departureTime', 'ASC']]
   });
-  
-  // Calculate available seats for each bus
+
   const busesWithAvailability = buses.map(bus => {
     const busData = bus.toJSON();
     const availableSeats = busData.seats ? busData.seats.filter(s => s.status === 'available').length : 0;
-    delete busData.seats; // Remove seats array from response
-    return {
-      ...busData,
-      availableSeats
-    };
+    delete busData.seats;
+    return { ...busData, availableSeats };
   });
-  
+
   res.status(200).json({
     status: 200,
     message: 'Buses retrieved successfully',
     data: {
       buses: busesWithAvailability,
-      pagination: {
-        total: count,
-        page,
-        limit,
-        totalPages: Math.ceil(count / limit)
-      }
+      pagination: { total: count, page, limit, totalPages: Math.ceil(count / limit) }
     }
   });
 });
@@ -126,92 +78,50 @@ export const getAllBuses = asyncHandler(async (req, res) => {
 export const updateBus = asyncHandler(async (req, res) => {
   const { id } = req.params;
   const { plateNumber, totalSeats, companyId, routeId, departureDate, departureTime } = req.body;
-  
+
   const bus = await Bus.findByPk(id);
-  
-  if (!bus) {
-    throw createError.notFound('Bus not found');
-  }
-  
-  // Check if plate number is being changed and if it's already taken
+  if (!bus) throw createError.notFound('Bus not found');
+
   if (plateNumber && plateNumber !== bus.plateNumber) {
     const existingBus = await Bus.findOne({ where: { plateNumber } });
-    if (existingBus) {
-      throw createError.conflict('Plate number is already taken');
-    }
+    if (existingBus) throw createError.conflict('Plate number is already taken');
   }
-  
-  // Verify company exists if being changed
+
   if (companyId && companyId !== bus.companyId) {
     const company = await BusCompany.findByPk(companyId);
-    if (!company) {
-      throw createError.notFound('Bus company not found');
-    }
+    if (!company) throw createError.notFound('Bus company not found');
   }
-  
-  // Verify route exists if being changed
+
   if (routeId && routeId !== bus.routeId) {
     const route = await Route.findByPk(routeId);
-    if (!route) {
-      throw createError.notFound('Route not found');
-    }
+    if (!route) throw createError.notFound('Route not found');
   }
-  
-  // Update bus fields
-  if (plateNumber) bus.plateNumber = plateNumber;
-  if (companyId) bus.companyId = companyId;
-  if (routeId) bus.routeId = routeId;
-  if (departureDate) bus.departureDate = departureDate;
-  if (departureTime) bus.departureTime = departureTime;
-  
-  // Handle seat count change
+
+  if (plateNumber)    bus.plateNumber    = plateNumber;
+  if (companyId)      bus.companyId      = companyId;
+  if (routeId)        bus.routeId        = routeId;
+  if (departureDate)  bus.departureDate  = departureDate;
+  if (departureTime)  bus.departureTime  = departureTime;
+
   if (totalSeats && totalSeats !== bus.totalSeats) {
     const currentSeats = await Seat.count({ where: { busId: bus.id } });
-    
     if (totalSeats > currentSeats) {
-      // Add more seats
       const newSeats = [];
       for (let i = currentSeats + 1; i <= totalSeats; i++) {
-        newSeats.push({
-          busId: bus.id,
-          seatNumber: i,
-          status: 'available'
-        });
+        newSeats.push({ busId: bus.id, seatNumber: i, status: 'available' });
       }
       await Seat.bulkCreate(newSeats);
     } else if (totalSeats < currentSeats) {
-      // Remove excess seats (only if they're not booked)
-      const seatsToRemove = await Seat.findAll({
-        where: {
-          busId: bus.id,
-          seatNumber: { [Op.gt]: totalSeats }
-        }
-      });
-      
-      // Check if any of these seats are reserved
+      const seatsToRemove = await Seat.findAll({ where: { busId: bus.id, seatNumber: { [Op.gt]: totalSeats } } });
       const reservedSeats = seatsToRemove.filter(s => s.status === 'reserved');
-      if (reservedSeats.length > 0) {
-        throw createError.badRequest('Cannot reduce seat count below reserved seats');
-      }
-      
-      await Seat.destroy({
-        where: {
-          busId: bus.id,
-          seatNumber: { [Op.gt]: totalSeats }
-        }
-      });
+      if (reservedSeats.length > 0) throw createError.badRequest('Cannot reduce seat count below reserved seats');
+      await Seat.destroy({ where: { busId: bus.id, seatNumber: { [Op.gt]: totalSeats } } });
     }
-    
     bus.totalSeats = totalSeats;
   }
-  
+
   await bus.save();
-  
-  res.status(200).json({
-    status: 200,
-    message: 'Bus updated successfully',
-    data: { bus }
-  });
+  res.status(200).json({ status: 200, message: 'Bus updated successfully', data: { bus } });
 });
 
 /**
@@ -220,86 +130,62 @@ export const updateBus = asyncHandler(async (req, res) => {
  */
 export const deleteBus = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  
   const bus = await Bus.findByPk(id);
-  
-  if (!bus) {
-    throw createError.notFound('Bus not found');
-  }
-  
-  // Cancel all pending bookings for this bus
+  if (!bus) throw createError.notFound('Bus not found');
+
   await Booking.update(
     { status: 'cancelled' },
-    {
-      where: {
-        busId: id,
-        status: { [Op.in]: ['pending', 'confirmed'] }
-      }
-    }
+    { where: { busId: id, status: { [Op.in]: ['pending', 'confirmed'] } } }
   );
-  
-  // Soft delete bus (sets deletedAt timestamp)
+
   await bus.destroy();
-  
-  res.status(200).json({
-    status: 200,
-    message: 'Bus deleted successfully and pending bookings cancelled'
-  });
+  res.status(200).json({ status: 200, message: 'Bus deleted successfully and pending bookings cancelled' });
 });
 
 /**
  * Search buses by origin, destination, and date
  * GET /buses/search
+ * Fixed: case-insensitive search for origin and destination
  */
 export const searchBuses = asyncHandler(async (req, res) => {
   const { origin, destination, date } = req.query;
-  
+
+  // Build date filter - if date provided use exact match, otherwise return all future buses
+  const today = new Date().toISOString().split('T')[0];
+  const dateFilter = date ? { departureDate: date } : { departureDate: { [Op.gte]: today } };
+
   const buses = await Bus.findAll({
     include: [
-      {
-        model: BusCompany,
-        as: 'company',
-        attributes: ['id', 'name']
-      },
+      { model: BusCompany, as: 'company', attributes: ['id', 'name'] },
       {
         model: Route,
         as: 'route',
-        attributes: ['id', 'origin', 'destination', 'estimatedDuration'],
+        attributes: ['id', 'origin', 'destination', 'estimatedDuration', 'price'],
         where: {
-          origin,
-          destination
+          // Fixed: case-insensitive search using LOWER()
+          origin:      sequelize.where(sequelize.fn('LOWER', sequelize.col('route.origin')),      origin.toLowerCase()),
+          destination: sequelize.where(sequelize.fn('LOWER', sequelize.col('route.destination')), destination.toLowerCase())
         }
       },
-      {
-        model: Seat,
-        as: 'seats',
-        attributes: ['status'],
-        required: false
-      }
+      { model: Seat, as: 'seats', attributes: ['status'], required: false }
     ],
-    where: {
-      departureDate: date
-    },
-    order: [['departureTime', 'ASC']]
+    where: dateFilter,
+    order: [['departureDate', 'ASC'], ['departureTime', 'ASC']]
   });
-  
-  // Calculate available seats for each bus
+
   const busesWithAvailability = buses.map(bus => {
     const busData = bus.toJSON();
     const availableSeats = busData.seats ? busData.seats.filter(s => s.status === 'available').length : 0;
-    delete busData.seats; // Remove seats array from response
-    return {
-      ...busData,
-      availableSeats
-    };
+    delete busData.seats;
+    return { ...busData, availableSeats };
   });
-  
+
   res.status(200).json({
     status: 200,
     message: 'Buses retrieved successfully',
     data: {
       buses: busesWithAvailability,
-      searchCriteria: { origin, destination, date }
+      searchCriteria: { origin, destination, date: date || "all future dates" }
     }
   });
 });
@@ -310,27 +196,18 @@ export const searchBuses = asyncHandler(async (req, res) => {
  */
 export const getBusSeats = asyncHandler(async (req, res) => {
   const { id } = req.params;
-  
   const bus = await Bus.findByPk(id);
-  
-  if (!bus) {
-    throw createError.notFound('Bus not found');
-  }
-  
+  if (!bus) throw createError.notFound('Bus not found');
+
   const seats = await Seat.findAll({
     where: { busId: id },
     attributes: ['id', 'seatNumber', 'status'],
     order: [['seatNumber', 'ASC']]
   });
-  
+
   res.status(200).json({
     status: 200,
     message: 'Seat availability retrieved successfully',
-    data: {
-      busId: bus.id,
-      plateNumber: bus.plateNumber,
-      totalSeats: bus.totalSeats,
-      seats
-    }
+    data: { busId: bus.id, plateNumber: bus.plateNumber, totalSeats: bus.totalSeats, seats }
   });
 });

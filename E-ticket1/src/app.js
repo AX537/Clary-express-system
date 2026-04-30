@@ -19,6 +19,7 @@ import swaggerRoutes from './routes/swaggerRoutes.js';
 
 // Middleware imports
 import { errorHandler, notFoundHandler } from './middleware/errorMiddleware.js';
+import { startSeatExpiryScheduler } from './services/seatExpiry.js';
 
 // Load environment variables
 dotenv.config();
@@ -92,6 +93,9 @@ const startServer = async () => {
       await sequelize.sync({ alter: false });
       console.log('[OK] Database models synchronized');
     }
+
+    // Start seat expiry scheduler — releases unpaid seats after 10 minutes
+    startSeatExpiryScheduler();
 
     // Start listening
     const PORT = process.env.PORT || 3000;

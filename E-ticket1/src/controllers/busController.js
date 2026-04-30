@@ -10,8 +10,7 @@ import sequelize from '../../config/database.js';
 export const createBus = asyncHandler(async (req, res) => {
   const { plateNumber, totalSeats, companyId, routeId, departureDate, departureTime } = req.body;
 
-  const existingBus = await Bus.findOne({ where: { plateNumber } });
-  if (existingBus) throw createError.conflict('Bus with this plate number already exists');
+  // Removed unique plate number check - same bus can run multiple trips on different dates/times
 
   const company = await BusCompany.findByPk(companyId);
   if (!company) throw createError.notFound('Bus company not found');

@@ -10,7 +10,6 @@ const Bus = sequelize.define('Bus', {
   plateNumber: {
     type: DataTypes.STRING(20),
     allowNull: false,
-    unique: true,
     field: 'plate_number',
     validate: {
       notEmpty: true,
@@ -61,41 +60,19 @@ const Bus = sequelize.define('Bus', {
     validate: {
       notEmpty: true
     }
-  },
-  createdAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    field: 'created_at'
-  },
-  updatedAt: {
-    type: DataTypes.DATE,
-    allowNull: false,
-    field: 'updated_at'
-  },
-  deletedAt: {
-    type: DataTypes.DATE,
-    allowNull: true,
-    field: 'deleted_at'
   }
+  // createdAt, updatedAt, deletedAt handled automatically by Sequelize
+  // via timestamps: true, paranoid: true, underscored: true below.
 }, {
   tableName: 'buses',
   timestamps: true,
   paranoid: true,
   underscored: true,
   indexes: [
-    {
-      unique: true,
-      fields: ['plate_number']
-    },
-    {
-      fields: ['company_id']
-    },
-    {
-      fields: ['route_id']
-    },
-    {
-      fields: ['departure_date', 'departure_time']
-    }
+    { fields: ['plate_number'] },
+    { fields: ['company_id'] },
+    { fields: ['route_id'] },
+    { fields: ['departure_date', 'departure_time'] }
   ]
 });
 
